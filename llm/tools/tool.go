@@ -1,8 +1,25 @@
 package tools
 
 import (
+	"slices"
+
 	"github.com/sashabaranov/go-openai"
+	tls "github.com/tmc/langchaingo/tools"
 )
+
+type ToolParamter struct {
+	Type        string                  `json:"type"`
+	Properties  map[string]ToolParamter `json:"properties,omitempty"`
+	Description string                  `json:"description,omitempty"`
+	IsRequired  bool                    `json:"is_required"`
+}
+
+// ITool is a tool for the llm agent to interact with different applications.
+type ITool interface {
+	tls.Tool
+	Paramters() any
+	DescriptionWithParamters() string
+}
 
 // GetBaseTools returns the list of base tools available to all skills.
 func GetBaseTools() []openai.Tool {
@@ -187,4 +204,31 @@ func GetBaseTools() []openai.Tool {
 		// 	},
 		// },
 	}
+}
+
+// OpenaiToolConvertToolParamter parse openai.Tool Funciton parameters to ToolParamter
+func OpenaiToolConvertToolParamter(tool openai.Tool) map[string]ToolParamter {
+	ret := map[string]ToolParamter{}
+	if tool.Function == nil || tool.Function.Parameters == nil {
+		return ret
+	}
+	if tool.Function.Parameters.(map[string]any) == nil {
+		return ret
+	}
+	paramters := tool.Function.Parameters.(map[string]any)
+	properties := paramters["properties"].(map[string]any)
+	required := paramters["required"].([]string)
+	for k, v := range properties {
+		val, ok := v.(map[string]any)
+		if !ok {
+			continue
+		}
+		t := ToolParamter{
+			Type:        val["type"].(string),
+			Description: val["description"].(string),
+			IsRequired:  slices.Contains(required, k),
+		}
+		ret[k] = t
+	}
+	return ret
 }

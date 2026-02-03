@@ -10,8 +10,9 @@ type Agent interface {
 
 // config agent config
 type config struct {
-	skillDir string
-	mcpDir   string
+	skillDir    string
+	mcpDir      string
+	toolSupport bool
 }
 
 type Option func(*config)
@@ -27,5 +28,12 @@ func WithSkill(skillDir string) Option {
 func WithMCP(mcpDir string) Option {
 	return func(c *config) {
 		c.mcpDir = mcpDir
+	}
+}
+
+// ModelToolSupport 模型支持工具调用
+func ModelToolSupport(support bool) Option {
+	return func(c *config) {
+		c.toolSupport = support
 	}
 }

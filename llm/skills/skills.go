@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/tmc/langchaingo/tools"
+	"github.com/kinwyb/langchat/llm/tools"
 )
 
 // Skill stores basic info about a skill
@@ -13,8 +13,8 @@ type Skill struct {
 	Name        string
 	Description string
 	Package     *Package
-	Tools       []tools.Tool // Cached tools for the skill
-	Loaded      bool         // Whether tools have been loaded
+	Tools       []tools.ITool // Cached tools for the skill
+	Loaded      bool          // Whether tools have been loaded
 }
 
 // LoadSkills 加载技能

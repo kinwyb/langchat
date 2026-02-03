@@ -10,10 +10,11 @@ import (
 	"sync"
 
 	"github.com/kinwyb/langchat/llm/skills"
+	"github.com/kinwyb/langchat/llm/tools"
 	"github.com/smallnest/langgraphgo/graph"
 	"github.com/smallnest/langgraphgo/prebuilt"
 	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/tools"
+	tls "github.com/tmc/langchaingo/tools"
 )
 
 type ReactEvent int
@@ -26,7 +27,7 @@ const (
 
 type ReactOption func(*ReactAgent)
 
-func ReactWithSupportTool(supportTool bool) ReactOption {
+func ReactSupportTool(supportTool bool) ReactOption {
 	return func(a *ReactAgent) {
 		a.supportTool = supportTool
 	}
@@ -52,7 +53,7 @@ func ReactWithStreamEvent(event func(context.Context, ReactEvent, []byte)) React
 	}
 }
 
-func ReactWithTools(tool []tools.Tool) ReactOption {
+func ReactWithTools(tool []tools.ITool) ReactOption {
 	return func(a *ReactAgent) {
 		a.inputTools = tool
 	}
@@ -69,7 +70,7 @@ func ReactWithMaxIterations(maxIterations int) ReactOption {
 
 type ReactAgent struct {
 	model         llms.Model
-	inputTools    []tools.Tool
+	inputTools    []tools.ITool
 	toolExecutor  *prebuilt.ToolExecutor
 	maxIterations int
 	supportTool   bool
@@ -103,8 +104,12 @@ func (r *ReactAgent) InitAgent() error {
 		r.maxIterations = 20
 	}
 
+	var inputTools []tls.Tool
+	for _, tool := range r.inputTools {
+		inputTools = append(inputTools, tool)
+	}
 	// Define the tool executor
-	r.toolExecutor = prebuilt.NewToolExecutor(r.inputTools)
+	r.toolExecutor = prebuilt.NewToolExecutor(inputTools)
 
 	// Define the graph
 	workflow := graph.NewStateGraph[map[string]any]()
@@ -329,17 +334,7 @@ func (r *ReactAgent) initTool() []llms.Tool {
 				Function: &llms.FunctionDefinition{
 					Name:        t.Name(),
 					Description: t.Description(),
-					Parameters: map[string]any{
-						"type": "object",
-						"properties": map[string]any{
-							"input": map[string]any{
-								"type":        "string",
-								"description": "The input query for the tool",
-							},
-						},
-						"required":             []string{"input"},
-						"additionalProperties": false,
-					},
+					Parameters:  t.Paramters(),
 				},
 			})
 		}
@@ -349,10 +344,7 @@ func (r *ReactAgent) initTool() []llms.Tool {
 			if strings.HasPrefix(tool.Name(), "run_") {
 				continue
 			}
-			desc := tool.Description()
-			if tool.Name() == "read_file" {
-				desc = desc + " file path parameter name \"filePath\" "
-			}
+			desc := tool.DescriptionWithParamters()
 			toolsInfo.WriteString(fmt.Sprintf("- %s: %s\n", tool.Name(), desc))
 		}
 
@@ -407,7 +399,7 @@ func (r *ReactAgent) GenerateContent(ctx context.Context, messages []llms.Messag
 }
 
 // skillDoTask skill 执行
-func skillDoTask(ctx context.Context, model llms.Model, skill *skills.Skill, message string, onChunk func(ctx context.Context, data []byte) error) (string, error) {
+func skillDoTask(ctx context.Context, model llms.Model, skill *skills.Skill, toolSupport bool, message string, onChunk func(ctx context.Context, data []byte) error) (string, error) {
 	if skill == nil {
 		return "", errors.New("skill is nil")
 	}
@@ -415,6 +407,7 @@ func skillDoTask(ctx context.Context, model llms.Model, skill *skills.Skill, mes
 	opts := []ReactOption{
 		ReactWithTools(skill.Tools),
 		ReactWithMaxIterations(5),
+		ReactSupportTool(toolSupport),
 	}
 	if onChunk != nil {
 		opts = append(opts, ReactWithStream(onChunk))

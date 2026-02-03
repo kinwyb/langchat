@@ -121,7 +121,7 @@ func (a *TextChatAgent) ChatStream(ctx context.Context, message string, enableSk
 		} else if selectedSkill != "" { // 选中了一个技能，使用技能
 			for _, skill := range a.skills {
 				if skill.Name == selectedSkill {
-					skillResp, se := skillDoTask(ctx, a.llm, skill, message, onChunk)
+					skillResp, se := skillDoTask(ctx, a.llm, skill, a.cfg.toolSupport, message, onChunk)
 					if se != nil {
 						log.Printf("Error during task creation: %v", se)
 					} else if skillResp != "" {

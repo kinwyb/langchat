@@ -10,38 +10,49 @@ import (
 
 	"github.com/kinwyb/langchat/llm/tools"
 	openai "github.com/sashabaranov/go-openai"
-	tls "github.com/tmc/langchaingo/tools"
 )
 
 // Tool implements tools.Tool for skills.
 type Tool struct {
-	name        string
-	description string
-	scriptMap   map[string]string
-	skillPath   string
+	scriptMap map[string]string
+	skillPath string
+	tool      openai.Tool
+}
+
+func (t *Tool) Paramters() any {
+	return t.tool.Function.Parameters
+}
+
+func (t *Tool) DescriptionWithParamters() string {
+	sb := strings.Builder{}
+	sb.WriteString(t.Description() + " ")
+	params := tools.OpenaiToolConvertToolParamter(t.tool)
+	for k, v := range params {
+		sb.WriteString(k + "(" + v.Type + ") " + v.Description + " ")
+	}
+	return sb.String()
 }
 
 func (t *Tool) Name() string {
-	return t.name
+	return t.tool.Function.Name
 }
 
 func (t *Tool) Description() string {
-	return t.description
+	return t.tool.Function.Description
 }
 
 func (t *Tool) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]any{
-		"name":        t.name,
-		"description": t.description,
-		"skillPath":   t.skillPath,
-		"scriptMap":   t.scriptMap,
+		"skillPath": t.skillPath,
+		"scriptMap": t.scriptMap,
+		"tool":      t.tool,
 	})
 }
 
 func (t *Tool) Call(ctx context.Context, input string) (string, error) {
 	// input is the JSON string of arguments
 	// We need to parse it based on the tool name, similar to goskills runner.go
-	switch t.name {
+	switch t.Name() {
 	case "run_shell_code":
 		var params struct {
 			Code string         `json:"code"`
@@ -142,7 +153,7 @@ func (t *Tool) Call(ctx context.Context, input string) (string, error) {
 		return tools.WebFetch(params.URL)
 
 	default:
-		if scriptPath, ok := t.scriptMap[t.name]; ok {
+		if scriptPath, ok := t.scriptMap[t.Name()]; ok {
 			var params struct {
 				Args []string `json:"args"`
 			}
@@ -157,34 +168,24 @@ func (t *Tool) Call(ctx context.Context, input string) (string, error) {
 
 			return tools.RunShellScript(scriptPath, params.Args)
 		}
-		return "", fmt.Errorf("unknown tool: %s", t.name)
+		return "", fmt.Errorf("unknown tool: %s", t.Name())
 	}
 }
 
 // Tools converts a SkillPackage to a slice of tools.Tool.
-func Tools(skill *Package) ([]tls.Tool, error) {
+func Tools(skill *Package) ([]tools.ITool, error) {
 	availableTools, scriptMap := generateToolDefinitions(skill)
-	var result []tls.Tool
+	var result []tools.ITool
 
 	for _, t := range availableTools {
 		if t.Function.Name == "" {
 			continue
 		}
 
-		// Create a description that includes the arguments schema if possible,
-		// but langchaingo tools usually just have a text description.
-		// We can append the JSON schema of parameters to the description to help the LLM.
-		desc := t.Function.Description
-		// Note: Parameters schema is available via t.Function.Parameters if needed,
-		// but langchaingo's tools.Tool interface doesn't have a Schema method.
-		// The schema would need to be handled separately if function calling support is required.
-		_ = t.Function.Parameters // Acknowledge parameters exist but aren't used here
-
 		result = append(result, &Tool{
-			name:        t.Function.Name,
-			description: desc,
-			scriptMap:   scriptMap,
-			skillPath:   skill.Path,
+			scriptMap: scriptMap,
+			skillPath: skill.Path,
+			tool:      t,
 		})
 	}
 	return result, nil
