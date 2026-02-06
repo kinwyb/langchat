@@ -59,11 +59,8 @@
                 <span></span>
               </div>
 
-              <!-- 流式输出光标效果 -->
+              <!-- 流式输出内容 -->
               <div v-else class="markdown-body" v-html="renderedContent"></div>
-              
-              <!-- 流式光标 -->
-              <span v-if="isStreaming" class="stream-cursor"></span>
             </div>
 
             <!-- 错误信息 -->
@@ -122,7 +119,6 @@ import cpp from 'highlight.js/lib/languages/cpp'
 import c from 'highlight.js/lib/languages/c'
 import 'highlight.js/styles/atom-one-dark.css'
 
-// 注册语言
 hljs.registerLanguage('javascript', javascript)
 hljs.registerLanguage('typescript', typescript)
 hljs.registerLanguage('python', python)
@@ -140,21 +136,36 @@ hljs.registerLanguage('java', java)
 hljs.registerLanguage('cpp', cpp)
 hljs.registerLanguage('c', c)
 
-// 自定义renderer
-const renderer = new marked.Renderer()
+const getLanguage = (lang) => {
+  if (!lang) return 'plaintext'
+  const mapping = { js: 'javascript', ts: 'typescript', py: 'python', sh: 'shell', yml: 'yaml' }
+  const mappedLang = mapping[lang.toLowerCase()] || lang.toLowerCase()
+  return hljs.getLanguage(mappedLang) ? mappedLang : 'plaintext'
+}
 
-// 自定义代码块渲染
-renderer.code = (code, language) => {
-  const validLang = language && hljs.getLanguage(language) ? language : 'plaintext'
-  const highlighted = validLang !== 'plaintext' 
-    ? hljs.highlight(code, { language: validLang }).value 
-    : code
-  
-  return `
-    <div class="code-block">
+const highlightCode = (code, lang) => {
+  const language = getLanguage(lang)
+  if (language === 'plaintext') return hljs.highlightAuto(code).value
+  return hljs.highlight(code, { language }).value
+}
+
+marked.use(
+  markedHighlight({
+    langPrefix: 'hljs language-',
+    highlight(code, lang) {
+      return highlightCode(code, lang)
+    }
+  })
+)
+
+const renderer = {
+  code({ text, lang }) {
+    const language = getLanguage(lang)
+    const highlighted = highlightCode(text, language)
+    return `<div class="code-block">
       <div class="code-header">
-        <span class="code-lang">${validLang}</span>
-        <button class="code-copy-btn" onclick="copyCode(this)" data-code="${encodeURIComponent(code)}">
+        <span class="code-lang">${language}</span>
+        <button class="code-copy-btn" onclick="copyCode(this)" data-code="${encodeURIComponent(text)}">
           <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
             <rect x="2" y="2" width="8" height="10" rx="1.5" stroke="currentColor" stroke-width="1.2"/>
             <path d="M5 2V1.5C5 0.671573 5.67157 0 6.5 0H11C11.8284 0 12.5 0.671573 12.5 1.5V9C12.5 9.82843 11.8284 10.5 11 10.5H10" stroke="currentColor" stroke-width="1.2"/>
@@ -162,29 +173,17 @@ renderer.code = (code, language) => {
           <span>复制</span>
         </button>
       </div>
-      <pre><code class="hljs language-${validLang}">${highlighted}</code></pre>
-    </div>
-  `
+      <pre><code class="hljs language-${language}">${highlighted}</code></pre>
+    </div>`
+  },
+  image({ href, title, text }) {
+    return `<div class="image-container">
+      <img src="${href}" alt="${text || ''}"${title ? ` title="${title}"` : ''} />
+    </div>`
+  }
 }
 
-// 配置marked
-marked.use(
-  markedHighlight({
-    langPrefix: 'hljs language-',
-    highlight(code, lang) {
-      const language = hljs.getLanguage(lang) ? lang : 'plaintext'
-      return hljs.highlight(code, { language }).value
-    }
-  })
-)
-
-marked.setOptions({
-  renderer,
-  breaks: true,
-  gfm: true,
-  headerIds: false,
-  mangle: false
-})
+marked.use({ renderer })
 
 const props = defineProps({
   message: {
@@ -353,7 +352,7 @@ watch(() => props.message.reasoning_content, (newVal, oldVal) => {
   background-color: #f5f7fa;
   border-radius: 16px;
   border-top-left-radius: 4px;
-  padding: 16px 20px;
+  padding: 12px 16px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
@@ -497,7 +496,7 @@ watch(() => props.message.reasoning_content, (newVal, oldVal) => {
 .message-actions {
   display: flex;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 8px;
   opacity: 0;
   transition: opacity 0.2s;
 }
@@ -528,18 +527,54 @@ watch(() => props.message.reasoning_content, (newVal, oldVal) => {
 /* Markdown内容样式 */
 :deep(.markdown-body) {
   word-wrap: break-word;
+  white-space: pre-wrap;
+  line-height: 1.8;
+}
+
+:deep(.markdown-body) > *:first-child {
+  margin-top: 0 !important;
+}
+
+:deep(.markdown-body) > *:last-child {
+  margin-bottom: 0 !important;
 }
 
 :deep(.markdown-body p) {
   margin: 0.8em 0;
+  line-height: 1.8;
 }
 
-:deep(.markdown-body p:first-child) {
-  margin-top: 0;
+:deep(.markdown-body br) {
+  display: block;
+  margin: 0.5em 0;
+  content: '';
 }
 
-:deep(.markdown-body p:last-child) {
-  margin-bottom: 0;
+:deep(.markdown-body pre) {
+  margin: 1em 0;
+  padding: 16px;
+  overflow-x: auto;
+  background-color: #282c34;
+  border-radius: 8px;
+}
+
+:deep(.markdown-body pre code) {
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Monaco, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  background-color: transparent;
+  padding: 0;
+  white-space: pre;
+}
+
+:deep(.markdown-body code) {
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Monaco, monospace;
+  font-size: 0.9em;
+  background-color: #f3f4f6;
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  color: #dc2626;
+  white-space: pre-wrap;
 }
 
 :deep(.markdown-body h1),
@@ -587,6 +622,7 @@ watch(() => props.message.reasoning_content, (newVal, oldVal) => {
 
 :deep(.markdown-body li) {
   margin: 0.4em 0;
+  line-height: 1.6;
 }
 
 :deep(.markdown-body li > ul),
@@ -636,6 +672,15 @@ watch(() => props.message.reasoning_content, (newVal, oldVal) => {
   margin: 0.8em 0;
 }
 
+:deep(.markdown-body .image-container) {
+  margin: 0.8em 0;
+}
+
+:deep(.markdown-body .image-container img) {
+  margin: 0;
+  display: block;
+}
+
 :deep(.markdown-body table) {
   width: 100%;
   margin: 1em 0;
@@ -660,24 +705,15 @@ watch(() => props.message.reasoning_content, (newVal, oldVal) => {
   background-color: #f9fafb;
 }
 
-:deep(.markdown-body code) {
-  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Monaco, monospace;
-  font-size: 0.9em;
-  background-color: #f3f4f6;
-  padding: 0.2em 0.4em;
-  border-radius: 4px;
-  color: #dc2626;
-}
-
 /* 代码块样式 */
-:deep(.code-block) {
+:global(.markdown-body .code-block) {
   margin: 1em 0;
   border-radius: 10px;
   overflow: hidden;
   background-color: #282c34;
 }
 
-:deep(.code-header) {
+:global(.markdown-body .code-header) {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -686,14 +722,14 @@ watch(() => props.message.reasoning_content, (newVal, oldVal) => {
   border-bottom: 1px solid #3e4451;
 }
 
-:deep(.code-lang) {
+:global(.markdown-body .code-lang) {
   font-size: 12px;
   color: #abb2bf;
   text-transform: uppercase;
   font-weight: 500;
 }
 
-:deep(.code-copy-btn) {
+:global(.markdown-body .code-copy-btn) {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -707,25 +743,25 @@ watch(() => props.message.reasoning_content, (newVal, oldVal) => {
   transition: all 0.2s;
 }
 
-:deep(.code-copy-btn:hover) {
+:global(.markdown-body .code-copy-btn:hover) {
   background-color: #3e4451;
   color: #fff;
 }
 
-:deep(.code-copy-btn.copied) {
+:global(.markdown-body .code-copy-btn.copied) {
   background-color: #28a745;
   border-color: #28a745;
   color: #fff;
 }
 
-:deep(.code-block pre) {
+:global(.markdown-body .code-block pre) {
   margin: 0;
   padding: 16px;
   overflow-x: auto;
   background-color: #282c34;
 }
 
-:deep(.code-block code) {
+:global(.markdown-body .code-block code) {
   font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Monaco, monospace;
   font-size: 13px;
   line-height: 1.6;

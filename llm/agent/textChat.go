@@ -200,7 +200,7 @@ func (a *TextChatAgent) ChatStream(ctx context.Context, message string, enableSk
 		} else {
 			toolResp, useTool, err := a.selectToolForTask(ctx, message)
 			if err != nil {
-				log.Printf(err.Error())
+				log.Print(err.Error())
 			} else if useTool {
 				// Add assistant response to history
 				assistantMsg := llms.MessageContent{
